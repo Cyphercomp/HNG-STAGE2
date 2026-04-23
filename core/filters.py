@@ -13,23 +13,8 @@ class ProfileFilter(django_filters.FilterSet):
     min_country_prob = django_filters.NumberFilter(field_name="country_probability", lookup_expr='gte')
     q = django_filters.CharFilter(method='parse_natural_language', label='Search')
 
-    class Meta:
-        model = Profile
-        fields = [
-            'q',
-            'gender',
-            'country_id',
-        ]
-
-    def parse_natural_language(self, queryset, name, value):
-        # Use PostgreSQL full-text search for better performance
-        if not value:
-            return queryset
-        
-        query_string = value.lower()
-        filters = Q()
-
-        COUNTRY_MAP = {
+    
+    COUNTRY_MAP = {
         # "nigeria": "NG", "kenya": "KE", "ghana": "GH", 
         # "rwanda": "RW", "angola": "AO", "togo": "TG",
         "South Sudan": "SS",
@@ -107,6 +92,60 @@ class ProfileFilter(django_filters.FilterSet):
         "senior": Q(age__gte=46, age__lte=100),
     }
 
+    class Meta:
+        model = Profile
+        fields = [
+            'q',
+            'gender',
+            'country_id',
+        ]
+
+    def parse_natural_language(self, queryset, name, value):
+        if not value:
+            return queryset
+        
+        query_string = value.lower()
+        filters = Q()
+
+        # 1. GENDER LOGIC
+        # Check for both "male and female" scenarios first
+        if "male" in query_string and "female" in query_string:
+            # Matches "male and female" or "females and males"
+            filters &= (Q(gender__iexact="male") | Q(gender__iexact="female"))
+        elif "female" in query_string:
+            filters &= Q(gender__iexact="female")
+        elif "male" in query_string:
+            filters &= Q(gender__iexact="male")
+
+        # 2. AGE GROUP LOGIC (teenager, young, adult, etc.)
+        for group_name, query_obj in self.AGE_GROUPS.items():
+            if group_name in query_string:
+                filters &= query_obj
+
+        # 3. COMPARATIVE AGE LOGIC (above/over 30)
+        above_match = re.search(r'(above|over|older than)\s+(\d+)', query_string)
+        if above_match:
+            age_val = int(above_match.group(2))
+            filters &= Q(age__gt=age_val)
+
+        # 4. COUNTRY LOGIC (from Angola, in Kenya)
+        country_match = re.search(r'(from|in|at)\s+([a-zA-Z]+)', query_string)
+        if country_match:
+            country_name = country_match.group(2).strip()
+            iso_code = self.COUNTRY_MAP.get(country_name)
+            if iso_code:
+                filters &= Q(country_id__iexact=iso_code)
+
+        # 5. EXECUTION & FALLBACK
+        # If we successfully parsed attributes, apply them
+        if filters:
+            return queryset.filter(filters)
+        
+        # If no keywords matched, perform a standard name search
+        return queryset.filter(
+            Q(first_name__icontains=value) | 
+            Q(last_name__icontains=value)
+        )
         
 class CustomOrderingFilter(OrderingFilter):
     # Map your custom names to DRF's internal logic
