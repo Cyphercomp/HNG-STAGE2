@@ -1,21 +1,20 @@
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.filters import SearchFilter
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.mixins import ListModelMixin
 from rest_framework import status
 from .models import Profile
 from .serializer import ProfileSerializer
-from .filters import ProfileFilter
+from .filters import ProfileFilter, CustomOrderingFilter
 from .pagination import ProfilePagination
 # Create your views here.
 
 class ProfileViewSet(ListModelMixin, viewsets.GenericViewSet):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
-    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    filter_backends = [DjangoFilterBackend, CustomOrderingFilter, SearchFilter]
     filterset_class = ProfileFilter
-    #filterset_fields = ['gender', 'age_group', 'country_id']
     ordering_fields = ['age', 'gender_probability', 'country_probability']
     pagination_class = ProfilePagination
 
